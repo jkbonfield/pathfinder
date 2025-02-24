@@ -253,10 +253,13 @@ static int pathfinder(char *asg_file, int max_copy, double min_cfrac, int max_pa
         double avg_coverage, adjusted_avg_coverage;
         // initial guess of sequence copy numbers
         avg_coverage = graph_sequence_coverage_precise(asg_copy, 0, 1, max_copy, &copy_number);
+        //avg_coverage = graph_sequence_coverage_precise(asg_copy, 0, 0, max_copy, &copy_number);
+
         if (VERBOSE > 1) {
             fprintf(stderr, "[M::%s] initial copy number estimation\n", __func__);
             print_copy_number(asg_copy, avg_coverage, copy_number, mstr);
         }
+
         // adjust estimation considering graph structure
         if (do_adjust) {
             adjust_sequence_copy_number_by_graph_layout(asg_copy, avg_coverage, &adjusted_avg_coverage, copy_number, max_copy, 10);

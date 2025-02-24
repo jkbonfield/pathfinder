@@ -50,7 +50,7 @@ typedef struct {
     char *name; // seq id
     char *seq; // sequence
     uint32_t len; // seq length
-    uint32_t cov; // fragment coverage
+    int cov; // fragment coverage
 } asg_seg_t;
 
 typedef struct {

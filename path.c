@@ -347,7 +347,8 @@ static void make_seg_dups(asg_t *asg, kh_u32_t *seg_dups, uint32_t s, uint32_t c
 double graph_sequence_coverage_precise(asg_t *asg, double min_cf, int min_copy, int max_copy, int **_copy_number)
 {
     uint32_t i, n_seg, iter;
-    int *copy_number;
+    int *copy_number_ret;
+    double *copy_number;
     double total_covs, total_lens, avg_cov, new_avg_cov, min_avg_cov;
     asmg_t *g;
     
@@ -360,10 +361,12 @@ double graph_sequence_coverage_precise(asg_t *asg, double min_cf, int min_copy, 
             __func__, min_avg_cov, avg_cov);
 #endif
     avg_cov = MAX(avg_cov, min_avg_cov);
+    MYCALLOC(copy_number_ret, n_seg);
     MYCALLOC(copy_number, n_seg);
     for (i = 0; i < n_seg; ++i) {
         if (g->vtx[i].del) continue;
-        copy_number[i] = MIN(MAX(min_copy, lround((double) g->vtx[i].cov / avg_cov)), max_copy);
+        copy_number[i] = MIN(MAX(min_copy, lround((double) (g->vtx[i].cov) / avg_cov)), max_copy);
+        fprintf(stderr, "copy=%d..%d, cov %d / avg %f = %d\n", min_copy, max_copy, g->vtx[i].cov, avg_cov, copy_number[i]);
     }
 
     iter = 0;
@@ -375,8 +378,10 @@ double graph_sequence_coverage_precise(asg_t *asg, double min_cf, int min_copy, 
         for (i = 0; i < n_seg; ++i) {
             if (g->vtx[i].del) continue;
             total_lens += (double) g->vtx[i].len * copy_number[i];
-            total_covs += (double) g->vtx[i].len * g->vtx[i].cov;
+            total_covs += (double) g->vtx[i].len * (g->vtx[i].cov);
+            //fprintf(stderr, "vtx %d: len %ld cov %d copy %d\n", i, g->vtx[i].len, g->vtx[i].cov, copy_number[i]);
         }
+        fprintf(stderr, "total_covs=%f total_lens=%f ratio=%f\n", total_covs, total_lens, total_covs/total_lens);
         // FIXME total_lens could be zero
         new_avg_cov = total_lens < FLT_EPSILON? DBL_MAX : (total_covs / total_lens);
         new_avg_cov = MAX(new_avg_cov, min_avg_cov);
@@ -394,14 +399,18 @@ double graph_sequence_coverage_precise(asg_t *asg, double min_cf, int min_copy, 
             __func__, iter, avg_cov);
     for (i = 0; i < n_seg; ++i) {
         if (g->vtx[i].del) continue;
-        fprintf(stderr, "[DEBUG_SEG_COPY_EST::%s] %s %u %d\n", __func__, asg->seg[i].name, g->vtx[i].cov, copy_number[i]);
+        fprintf(stderr, "[DEBUG_SEG_COPY_EST::%s] %s %f %d\n", __func__, asg->seg[i].name, g->vtx[i].cov, copy_number[i]);
     }
 #endif
     
-    if (_copy_number)
-        *_copy_number = copy_number;
-    else
-        free(copy_number);
+    if (_copy_number) {
+        *_copy_number = copy_number_ret;
+        for (i = 0; i < n_seg; i++)
+            copy_number_ret[i] = copy_number[i];
+    } else {
+        free(copy_number_ret);
+    }
+    free(copy_number);
 
     return avg_cov;
 }
@@ -2516,8 +2525,12 @@ static inline int gfa_parse_S(asg_t *g, char *s)
             }
         }
         if (s->cov == 0) {
-            fprintf(stderr, "[W::%s] the coverage of segment '%s' is zero\n", __func__, seg);
+            fprintf(stderr, "[W::%s] the coverage of segment '%s' len %d is zero\n", __func__, seg, len);
             s->cov = 1;
+        } else {
+            //s->cov += 1 + (s->cov>>1) + (s->cov>>2);
+            //s->cov = s->cov*100000 + 1;
+            s->cov = s->cov*100 + 1;
         }
         free(aux);
     } else return PARSE_S_ERR;
@@ -2606,7 +2619,7 @@ static int gfa_parse_L(asg_t *g, char *s)
             }
         }
         if (arc->cov == 0) {
-            fprintf(stderr, "[W::%s] the coverage of arc '%s%c' -> '%s%c' is zero\n", __func__, segv, "+-"[oriv], segw, "+-"[oriw]);
+            //fprintf(stderr, "[W::%s] the coverage of arc '%s%c' -> '%s%c' is zero\n", __func__, segv, "+-"[oriv], segw, "+-"[oriw]);
             arc->cov = 1;
         }
         free(aux);
