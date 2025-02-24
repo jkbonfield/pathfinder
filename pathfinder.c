@@ -39,6 +39,9 @@
 #include "path.h"
 #include "graph.h"
 
+// Minimum global kmer coverage
+int global_avg_cov = 0;
+
 #define PATHFINDER_VERSION "0.1"
 
 #define DEFAULT_MAX_PATH 10000000
@@ -252,8 +255,8 @@ static int pathfinder(char *asg_file, int max_copy, double min_cfrac, int max_pa
         
         double avg_coverage, adjusted_avg_coverage;
         // initial guess of sequence copy numbers
-        avg_coverage = graph_sequence_coverage_precise(asg_copy, 0, 1, max_copy, &copy_number);
         //avg_coverage = graph_sequence_coverage_precise(asg_copy, 0, 0, max_copy, &copy_number);
+        avg_coverage = graph_sequence_coverage_precise(asg_copy, 0, 1, max_copy, &copy_number);
 
         if (VERBOSE > 1) {
             fprintf(stderr, "[M::%s] initial copy number estimation\n", __func__);
@@ -363,7 +366,7 @@ static ko_longopt_t long_options[] = {
 
 int main(int argc, char *argv[])
 {
-    const char *opt_str = "ac:d:hN:o:pv:V";
+    const char *opt_str = "ac:d:hN:o:pv:VC:";
     ketopt_t opt = KETOPT_INIT;
     int c, max_copy, max_path, do_part, do_adjust, ret = 0;
     FILE *fp_help;
@@ -387,6 +390,7 @@ int main(int argc, char *argv[])
 
     while ((c = ketopt(&opt, argc, argv, 1, opt_str, long_options)) >=0 ) {
         if (c == 'c') max_copy = atoi(opt.arg);
+        else if (c == 'C') global_avg_cov = atoi(opt.arg);
         else if (c == 'd') min_cfrac = atof(opt.arg);
         else if (c == 'N') max_path = atoi(opt.arg);
         else if (c == 'p') do_part = 1;

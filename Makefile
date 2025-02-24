@@ -1,6 +1,7 @@
 CC=			gcc
 #CFLAGS=		-g -Wall -O3 -Wextra -Wno-unused-result -Wunused-parameter -fno-strict-aliasing
-CFLAGS=		-O3 -Wall -Wno-unused-function -Wno-unused-variable
+#CFLAGS=		-O3 -Wall -Wno-unused-function -Wno-unused-variable
+CFLAGS=		-g -Wall -Wno-unused-function -Wno-unused-variable -fno-inline
 CPPFLAGS=
 INCLUDES=	
 OBJS=

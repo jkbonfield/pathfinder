@@ -48,12 +48,15 @@
 #undef DEBUG_SRCC
 #undef DEBUG_SEG_COV_EST
 #undef DEBUG_SEG_COPY
-#undef DEBUG_SEG_COPY_EST
+#define DEBUG_SEG_COPY_EST
 #undef DEBUG_SEG_COV_BOUND
 #undef DEBUG_SEG_COV_ADJUST
 #undef DEBUG_BRUTE_FORCE_OPTIM
 #undef DEBUG_SIM_ANNEAL_OPTIM
 #undef DEBUG_PATH_FINDER
+
+// Minimum kmer coverage to copy_number 1, based on prior knowledge.
+extern int global_avg_cov;
 
 void path_destroy(path_t *path)
 {
@@ -189,6 +192,7 @@ static double graph_sequence_coverage_rough(asg_t *asg, double min_cf)
     }
     if (lc_p.n == 0) return .0;
 
+    // Lowest coverage first.
     qsort(lc_p.a, lc_p.n, sizeof(uint64_t), u64_cmpfunc);
 
     best1 = 0;
@@ -197,6 +201,8 @@ static double graph_sequence_coverage_rough(asg_t *asg, double min_cf)
         avg_cov = (double) (lc_p.a[i] >> 32);
         if (avg_cov == 0)
             continue;
+
+        // Compute total length of all remaining nodes from here
         tot_len = tot_len_c = tot_rm = 0;
         for (j = 0; j < lc_p.n; ++j) {
             len = (uint32_t) lc_p.a[j];
@@ -342,7 +348,7 @@ static void make_seg_dups(asg_t *asg, kh_u32_t *seg_dups, uint32_t s, uint32_t c
     return;
 }
 
-#define EM_MAX_ITER 1000
+#define EM_MAX_ITER 20
 
 double graph_sequence_coverage_precise(asg_t *asg, double min_cf, int min_copy, int max_copy, int **_copy_number)
 {
@@ -356,6 +362,8 @@ double graph_sequence_coverage_precise(asg_t *asg, double min_cf, int min_copy, 
     g = asg->asmg;
     min_avg_cov = graph_sequence_coverage_lower_bound(asg, 0.3);
     avg_cov = graph_sequence_coverage_rough(asg, min_cf);
+    if (avg_cov < global_avg_cov)
+        avg_cov = global_avg_cov;
 #ifdef DEBUG_SEG_COPY_EST
     fprintf(stderr, "[DEBUG_SEG_COPY_EST::%s] min coverage: %.3f; rough avg coverage: %.3f\n",
             __func__, min_avg_cov, avg_cov);
@@ -365,10 +373,13 @@ double graph_sequence_coverage_precise(asg_t *asg, double min_cf, int min_copy, 
     MYCALLOC(copy_number, n_seg);
     for (i = 0; i < n_seg; ++i) {
         if (g->vtx[i].del) continue;
-        copy_number[i] = MIN(MAX(min_copy, lround((double) (g->vtx[i].cov) / avg_cov)), max_copy);
-        fprintf(stderr, "copy=%d..%d, cov %d / avg %f = %d\n", min_copy, max_copy, g->vtx[i].cov, avg_cov, copy_number[i]);
+        //copy_number[i] = MIN(MAX(min_copy, lround((double) (g->vtx[i].cov) / avg_cov)), max_copy);
+        copy_number[i] = MIN(MAX(min_copy, ceil((double) (g->vtx[i].cov) / avg_cov)), max_copy);
+//        fprintf(stderr, "vtx[%03d].cov=%3d, avg_cov=%f, copy=%f\n",
+//                i, g->vtx[i].cov, avg_cov, copy_number[i]);
     }
 
+#if 1
     iter = 0;
     while (iter++ < EM_MAX_ITER) {
 #ifdef DEBUG_SEG_COPY_EST
@@ -387,19 +398,21 @@ double graph_sequence_coverage_precise(asg_t *asg, double min_cf, int min_copy, 
         new_avg_cov = MAX(new_avg_cov, min_avg_cov);
         if (fabs(new_avg_cov - avg_cov) < FLT_EPSILON) 
             break; // converged
-        avg_cov = new_avg_cov;
+        if (avg_cov < global_avg_cov)
+            avg_cov = global_avg_cov;
         for (i = 0; i < n_seg; ++i) {
             if (g->vtx[i].del) continue;
-            copy_number[i] = MIN(MAX(min_copy, lround((double) g->vtx[i].cov / avg_cov)), max_copy);
+            copy_number[i] = MIN(MAX(min_copy, ceil((double) g->vtx[i].cov / avg_cov)), max_copy);
         }
     }
+#endif
 
 #ifdef DEBUG_SEG_COPY_EST
     fprintf(stderr, "[DEBUG_SEG_COPY_EST::%s] sequence copy number estimation finished in %u iterations with an average sequence coverage %.3f\n",
             __func__, iter, avg_cov);
     for (i = 0; i < n_seg; ++i) {
         if (g->vtx[i].del) continue;
-        fprintf(stderr, "[DEBUG_SEG_COPY_EST::%s] %s %f %d\n", __func__, asg->seg[i].name, g->vtx[i].cov, copy_number[i]);
+        fprintf(stderr, "[DEBUG_SEG_COPY_EST::%s] %s %d %d\n", __func__, asg->seg[i].name, g->vtx[i].cov, (int)copy_number[i]);
     }
 #endif
     
@@ -2524,14 +2537,14 @@ static inline int gfa_parse_S(asg_t *g, char *s)
                 s->cov = len > 0? dv/len : dv;
             }
         }
-        if (s->cov == 0) {
-            fprintf(stderr, "[W::%s] the coverage of segment '%s' len %d is zero\n", __func__, seg, len);
-            s->cov = 1;
-        } else {
-            //s->cov += 1 + (s->cov>>1) + (s->cov>>2);
-            //s->cov = s->cov*100000 + 1;
-            s->cov = s->cov*100 + 1;
-        }
+//        if (s->cov == 0) {
+//            fprintf(stderr, "[W::%s] the coverage of segment '%s' len %d is zero\n", __func__, seg, len);
+//            s->cov = 1;
+//        } else {
+//            //s->cov += 1 + (s->cov>>1) + (s->cov>>2);
+//            //s->cov = s->cov*100000 + 1;
+//            s->cov = s->cov*100 + 1;
+//        }
         free(aux);
     } else return PARSE_S_ERR;
 
@@ -2618,10 +2631,10 @@ static int gfa_parse_L(asg_t *g, char *s)
                     arc->cov = *(int64_t*)(s_ARC_COV + 1);
             }
         }
-        if (arc->cov == 0) {
-            //fprintf(stderr, "[W::%s] the coverage of arc '%s%c' -> '%s%c' is zero\n", __func__, segv, "+-"[oriv], segw, "+-"[oriw]);
-            arc->cov = 1;
-        }
+//        if (arc->cov == 0) {
+//            //fprintf(stderr, "[W::%s] the coverage of arc '%s%c' -> '%s%c' is zero\n", __func__, segv, "+-"[oriv], segw, "+-"[oriw]);
+//            arc->cov = 1;
+//        }
         free(aux);
     } else return PARSE_L_ERR;
     return 0;
