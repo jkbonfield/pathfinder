@@ -559,6 +559,7 @@ double graph_sequence_coverage_precise(asg_t *asg, double min_cf, int min_copy, 
         new_avg_cov = MAX(new_avg_cov, min_avg_cov);
         if (fabs(new_avg_cov - avg_cov) < FLT_EPSILON) 
             break; // converged
+        avg_cov = new_avg_cov;
         if (avg_cov < global_avg_cov)
             avg_cov = global_avg_cov;
         for (i = 0; i < n_seg; ++i) {
